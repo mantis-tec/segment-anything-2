@@ -234,6 +234,35 @@ class SAM2ImagePredictor:
 
         return all_masks, all_ious, all_low_res_masks
 
+    def predict_mask_batch_torch(
+        self,
+        point_coords_batch: List[torch.Tensor],
+        point_labels_batch: List[torch.Tensor],
+        return_logits: bool = False,
+    ) -> List[torch.Tensor]:
+        assert self._is_batch, "This function should only be used when in batched mode"
+        if not self._is_image_set:
+            raise RuntimeError(
+                "An image must be set with .set_image_batch(...) before mask prediction."
+            )
+        num_images = len(self._features["image_embed"])
+        all_masks = []
+        for img_idx in range(num_images):
+            unnorm_coords, labels = point_coords_batch[img_idx], point_labels_batch[img_idx]
+            masks, _, _ = self._predict(
+                unnorm_coords,
+                labels,
+                None,
+                None,
+                False,
+                return_logits=return_logits,
+                img_idx=img_idx,
+            )
+            masks_torch = masks.squeeze(0)
+            all_masks.append(masks_torch)
+
+        return all_masks
+
     def predict(
         self,
         point_coords: Optional[np.ndarray] = None,
@@ -332,6 +361,26 @@ class SAM2ImagePredictor:
             if len(mask_input.shape) == 3:
                 mask_input = mask_input[None, :, :, :]
         return mask_input, unnorm_coords, labels, unnorm_box
+    
+    def prep_points_batch(self, point_coords_list: List[np.ndarray], point_labels_list: List[np.ndarray], orig_hw: Tuple[int, int], normalize_coords: bool = True)-> Tuple[List[torch.Tensor], torch.Tensor]:
+        unnorm_coords_list = []
+        labels_list = []
+        for prompt_idx, point_coords in enumerate(point_coords_list):
+            point_coords = torch.as_tensor(
+                point_coords, dtype=torch.float, device=self.device
+            )
+            unnorm_coords = self._transforms.transform_coords(
+                point_coords, normalize=normalize_coords, orig_hw=orig_hw
+            )
+            labels = torch.as_tensor(point_labels_list[prompt_idx], dtype=torch.int, device=self.device)
+            if len(unnorm_coords.shape) == 2:
+                unnorm_coords, labels = unnorm_coords[None, ...], labels[None, ...]
+            unnorm_coords_list.append(unnorm_coords)
+            labels_list.append(labels)
+        return unnorm_coords_list, labels_list
+        
+
+            
 
     @torch.no_grad()
     def _predict(
