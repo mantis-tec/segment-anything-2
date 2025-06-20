@@ -93,6 +93,7 @@ class SAM2Transforms(nn.Module):
                 is_hole = is_hole.reshape_as(masks)
                 # We fill holes with a small positive mask score (10.0) to change them to foreground.
                 masks = torch.where(is_hole, self.mask_threshold + 10.0, masks)
+                print("hole fill success")
 
             if self.max_sprinkle_area > 0:
                 labels, areas = get_connected_components(
@@ -103,6 +104,7 @@ class SAM2Transforms(nn.Module):
                 # We fill holes with negative mask score (-10.0) to change them to background.
                 masks = torch.where(is_hole, self.mask_threshold - 10.0, masks)
         except Exception as e:
+            print("hole fill fail")
             # Skip the post-processing step if the CUDA kernel fails
             warnings.warn(
                 f"{e}\n\nSkipping the post-processing step due to the error above. You can "
